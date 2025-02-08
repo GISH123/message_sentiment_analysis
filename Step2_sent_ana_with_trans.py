@@ -8,10 +8,10 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 # Configuration
 # =======================================================
 # Read from the folder where sent_ana_multimodel.py stored output
-data_dir = "example_data"
+data_dir = "processed_data_0207_11_models"
 
 # Where to store final CSVs with added translations
-output_dir = "translated_data_example"
+output_dir = data_dir + "_translated"
 os.makedirs(output_dir, exist_ok=True)
 
 # Decide on source/target languages for NLLB
@@ -51,9 +51,18 @@ def translate_text(texts, src_lang, tgt_lang, batch_size=16):
     """
     translations = []
 
-    # Determine forced token for the target language
-    tgt_lang_token_id = tokenizer.convert_tokens_to_ids(f'<<{tgt_lang}>>')
+    # ✅ Correctly set source language
+    tokenizer.src_lang = src_lang
+
+    # ✅ Ensure the correct target language token is retrieved
+    if tgt_lang not in tokenizer.get_vocab():
+        print(f"[ERROR] Target language token <<{tgt_lang}>> not found in tokenizer vocab!")
+        return ["ERROR: Invalid target language"] * len(texts)
+
+    tgt_lang_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)
+
     print(f"[INFO] Translating {len(texts)} messages from {src_lang} to {tgt_lang} (batch_size={batch_size})")
+
 
     start_time = time.time()
 
@@ -64,11 +73,13 @@ def translate_text(texts, src_lang, tgt_lang, batch_size=16):
         # Tokenize
         inputs = tokenizer(batch, return_tensors="pt", padding=True, truncation=True).to(device)
 
-        # Generate translations
-        with torch.no_grad():
-            generated_tokens = model.generate(**inputs, forced_bos_token_id=tgt_lang_token_id)
+        with torch.inference_mode():  # More efficient than torch.no_grad()
+            generated_tokens = model.generate(
+                **inputs,
+                forced_bos_token_id=tgt_lang_token_id,  # ✅ Ensure correct target language
+                max_length=128
+            )
 
-        # Decode
         batch_translations = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
         translations.extend(batch_translations)
 
@@ -76,6 +87,7 @@ def translate_text(texts, src_lang, tgt_lang, batch_size=16):
     print(f"[DONE] Translation completed in {total_time:.2f} seconds")
 
     return translations
+
 
 
 # =======================================================
@@ -103,11 +115,21 @@ def process_csv(csv_path, output_path):
 
     # Translate to English
     print("\n[STEP] Translating Tagalog → English...")
-    translated_en = translate_text(messages_tl, src_lang=SRC_LANG, tgt_lang=TGT_LANG_EN, batch_size=16)
+    translated_en = translate_text(
+        messages_tl, 
+        src_lang=SRC_LANG, 
+        tgt_lang=TGT_LANG_EN, 
+        batch_size=16
+    )
 
     # Translate to Chinese
     print("\n[STEP] Translating Tagalog → Chinese...")
-    translated_zh = translate_text(messages_tl, src_lang=SRC_LANG, tgt_lang=TGT_LANG_ZH, batch_size=16)
+    translated_zh = translate_text(
+        messages_tl, 
+        src_lang=SRC_LANG, 
+        tgt_lang=TGT_LANG_ZH, 
+        batch_size=16
+    )
 
     # Add new columns
     df["translated_message_en"] = translated_en

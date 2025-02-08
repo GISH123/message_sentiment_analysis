@@ -9,7 +9,7 @@ print(f"🚀 Using device: {device}")
 
 # Directories for input CSVs and output
 data_dir = "raw_data"
-output_dir = "processed_data"
+output_dir = data_dir +"_neg_scores"
 os.makedirs(output_dir, exist_ok=True)
 
 # 11 models that can (in principle) do sentiment analysis
